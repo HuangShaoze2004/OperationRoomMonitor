@@ -1,0 +1,14 @@
+# 篮子离线 + 推流 — 运行依赖
+# 1. 先按 https://pytorch.org 安装与 CUDA 匹配的 torch / torchvision
+# 2. pip install -r requirements.txt
+
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+numpy>=1.23.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+PyYAML>=6.0
+Pillow>=10.0.0
+mediapipe>=0.10.0

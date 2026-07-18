@@ -1,0 +1,113 @@
+# 篮子接触分段 + 段内耗材识别
+# 入口: main_basket.py / main_basket_stream.py / main_segments_offline.py
+
+io:
+  video: input/sample.mp4
+  excel: input/视频中的商品信息表.xlsx
+  out: output/result.txt
+  # false：段内耗材分类不做 Excel/JSON 白名单裁剪（全 41 类）；Excel 仍用于 product_id 映射
+  use_whitelist: false
+  # use_whitelist=true 时：null 从 excel C 列读白名单；或指定 {"allowed_names":[...]} JSON
+  whitelist_json: null
+
+weights:
+  hand: weights/hand_detect.pt
+  goodbad: weights/goodbad_frame.pt
+  haocai: weights/haocai_classify.pt
+
+# 手部检测：YOLO hand_detect.pt（weights.hand）
+hand:
+  backend: yolo
+
+runtime:
+  work_dir: null
+  keep_work_dir: false
+  python: null
+
+device:
+  type: cuda
+  half: false
+
+# 段内：手检 → 双手 ROI → 好坏帧门控 → 耗材分类
+phase2:
+  seek_margin_sec: 3.0
+  frame_stride: 1
+  det_conf: 0.7
+  # 双手 union 紧框后仅向下延伸（相对框高）
+  pad_bottom_ratio: 0.5
+  imgsz_det: 1920
+  # 段内需检测到至少两只手才裁 ROI（取最大两只 union）；merge_* 已不使用
+  merge_iou_gt: 0.0
+  merge_center_dist_max_px: null
+  merge_center_dist_max_frac_diag: null
+  tracking_alpha: 0.6
+  tracking_max_lost_frames: 0
+
+classification:
+  imgsz_cls: 224
+  good_top1_conf_threshold: 0.7
+  haocai_min_conf: 0.8
+  empty_cache_every: 0
+
+output:
+  legacy_12_col_only: true
+
+doctor_identity:
+  enabled: true
+  stream_enabled: true
+  checkpoint: doctor_identity_package/doctor_reid_best.pth
+  labels_csv: doctor_identity_package/labels.csv
+  # 人体框检测：YOLO11n（已随包提供 yolo11n.pt）
+  person_yolo_weights: yolo11n.pt
+  person_det_conf: 0.65
+  person_det_imgsz: 1280
+  min_identity_confidence: 0.00
+  middle_seconds: 10.0
+  sample_fps: 3.0
+  segment_sample_fps: 3.0
+  # 推流/段内医生 ReID：仅在每段窗口内居中取最多 3s 采样（耗材段窗口仍为 7s）
+  segment_window_sec: 3.0
+  pad_frac: 0.15
+
+# 医生人脸识别（基于 InsightFace 图库，与 doctor_identity ReID 独立）
+doctor_face_identity:
+  enabled: false
+
+# 篮子接触分段（main_basket.py / main_basket_stream.py）
+basket:
+  det_conf: 0.7
+  contact_iou_threshold: 0.05
+  contact_iou_on: 0.03
+  contact_iou_off: 0.01
+  confirm_seconds: 0.08
+  cooldown_seconds: 8.0
+  segment_start_offset_sec: 2.0
+  segment_end_offset_sec: 8.0
+  min_segment_sec: 4.0
+  scan_frame_stride: 1
+  roi_frame: first
+  save_roi_json: null
+  load_roi_json: null
+  skip_roi_select: false
+  roi_backend: tkinter
+  contact_tracking_enabled: true
+  contact_tracker: bytetrack
+  contact_track_buffer: 30
+
+# 推流实时识别（main_basket_stream.py）
+# 真 RTSP：raw BGR 环缓 + Producer/Consumer 多线程；本地 MP4 可 infer_source=file 回源 4K
+stream:
+  rtsp: rtsp://192.168.3.140:8554/front_top_test4
+  rtsp_transport: tcp
+  rtsp_buffer_size: 1
+  ring_buffer_sec: 14.0
+  fps: 25.0
+  ffmpeg_low_latency: true
+  infer_workers: 1
+  segment_start_offset_sec: 2.0
+  segment_end_offset_sec: 8.0
+  min_segment_sec: 4.0
+  infer_source: cache
+  infer_fallback: cache
+  # 真 RTSP 连接后丢弃前 N 帧再框选 ROI / 开始识别（避免初帧花屏）
+  warmup_skip_frames: 50
